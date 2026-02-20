@@ -660,23 +660,13 @@ def _parse_node_contents(
             _parse_node_contents(data, pos, content_end, node)
         elif tag_class == BER_CLASS_CONTEXT:
             if tag_number == 0:
-                if constructed:
-                    node.identifier = _decode_string_value(
-                        data, pos, content_end
-                    )
-                else:
-                    node.identifier = ber_decode_utf8(
-                        data, pos, content_end - pos
-                    )
+                node.identifier = _decode_string_value(
+                    data, pos, content_end
+                )
             elif tag_number == 1:
-                if constructed:
-                    node.description = _decode_string_value(
-                        data, pos, content_end
-                    )
-                else:
-                    node.description = ber_decode_utf8(
-                        data, pos, content_end - pos
-                    )
+                node.description = _decode_string_value(
+                    data, pos, content_end
+                )
 
         pos = content_end
         if length == -1:
@@ -707,12 +697,12 @@ def _parse_param_contents(
             _parse_param_contents(data, pos, content_end, node)
         elif tag_class == BER_CLASS_CONTEXT:
             if tag_number == 0:
-                node.identifier = ber_decode_utf8(
-                    data, pos, content_end - pos
+                node.identifier = _decode_string_value(
+                    data, pos, content_end
                 )
             elif tag_number == 1:
-                node.description = ber_decode_utf8(
-                    data, pos, content_end - pos
+                node.description = _decode_string_value(
+                    data, pos, content_end
                 )
             elif tag_number == 2:
                 if constructed:
@@ -752,6 +742,11 @@ def _decode_value(data: bytes, offset: int, end: int) -> Any:
     return data[pos : pos + length] if length > 0 else None
 
 
+def _clean_string(s: str) -> str:
+    """Remove non-printable characters from a decoded string."""
+    return "".join(c for c in s if c.isprintable() or c in (" ", "\t")).strip()
+
+
 def _decode_string_value(data: bytes, offset: int, end: int) -> str:
     """Decode a BER UTF8String value, possibly wrapped in a constructed tag."""
     if offset >= end or data[offset] == 0x00:
@@ -762,10 +757,12 @@ def _decode_string_value(data: bytes, offset: int, end: int) -> str:
     except EmberProtocolError:
         return ""
     if tag_class == BER_CLASS_UNIVERSAL and tag_number == BER_TAG_UTF8STRING:
-        return ber_decode_utf8(data, pos, length)
+        return _clean_string(ber_decode_utf8(data, pos, length))
     # Fallback: try to read as raw string
     if length > 0:
-        return data[pos : pos + length].decode("utf-8", errors="replace")
+        return _clean_string(
+            data[pos : pos + length].decode("utf-8", errors="replace")
+        )
     return ""
 
 
