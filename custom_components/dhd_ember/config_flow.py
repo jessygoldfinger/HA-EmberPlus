@@ -11,6 +11,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_GPIS,
@@ -94,8 +95,8 @@ class DHDEmberConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Let the user select which GPIs and GPOs to add."""
         if user_input is not None:
-            selected_gpis = user_input.get("gpis", [])
-            selected_gpos = user_input.get("gpos", [])
+            selected_gpis = [int(n) for n in user_input.get("gpis", [])]
+            selected_gpos = [int(n) for n in user_input.get("gpos", [])]
 
             gpis = [
                 {
@@ -126,23 +127,21 @@ class DHDEmberConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._discovered_gpis:
             gpi_options = {
-                num: label for num, label in sorted(self._discovered_gpis.items())
+                str(num): label
+                for num, label in sorted(self._discovered_gpis.items())
             }
-            schema_fields[vol.Optional("gpis", default=list(gpi_options.keys()))] = (
-                vol.All(
-                    [vol.In(gpi_options)],
-                )
-            )
+            schema_fields[
+                vol.Optional("gpis", default=list(gpi_options.keys()))
+            ] = cv.multi_select(gpi_options)
 
         if self._discovered_gpos:
             gpo_options = {
-                num: label for num, label in sorted(self._discovered_gpos.items())
+                str(num): label
+                for num, label in sorted(self._discovered_gpos.items())
             }
-            schema_fields[vol.Optional("gpos", default=list(gpo_options.keys()))] = (
-                vol.All(
-                    [vol.In(gpo_options)],
-                )
-            )
+            schema_fields[
+                vol.Optional("gpos", default=list(gpo_options.keys()))
+            ] = cv.multi_select(gpo_options)
 
         return self.async_show_form(
             step_id="select_ios",
@@ -178,8 +177,8 @@ class DHDEmberOptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            selected_gpis = user_input.get("gpis", [])
-            selected_gpos = user_input.get("gpos", [])
+            selected_gpis = [int(n) for n in user_input.get("gpis", [])]
+            selected_gpos = [int(n) for n in user_input.get("gpos", [])]
 
             gpis = [
                 {
@@ -234,21 +233,27 @@ class DHDEmberOptionsFlow(config_entries.OptionsFlow):
 
         if self._available_gpis:
             gpi_options = {
-                num: label
+                str(num): label
                 for num, label in sorted(self._available_gpis.items())
             }
             schema_fields[
-                vol.Optional("gpis", default=sorted(current_gpi_nums))
-            ] = vol.All([vol.In(gpi_options)])
+                vol.Optional(
+                    "gpis",
+                    default=[str(n) for n in sorted(current_gpi_nums)],
+                )
+            ] = cv.multi_select(gpi_options)
 
         if self._available_gpos:
             gpo_options = {
-                num: label
+                str(num): label
                 for num, label in sorted(self._available_gpos.items())
             }
             schema_fields[
-                vol.Optional("gpos", default=sorted(current_gpo_nums))
-            ] = vol.All([vol.In(gpo_options)])
+                vol.Optional(
+                    "gpos",
+                    default=[str(n) for n in sorted(current_gpo_nums)],
+                )
+            ] = cv.multi_select(gpo_options)
 
         return self.async_show_form(
             step_id="init",
