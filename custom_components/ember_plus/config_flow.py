@@ -1,4 +1,4 @@
-"""Config flow for the HA Ember+ integration."""
+"""Config flow for the HA EmberPlus integration."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def _build_param_options(
 
 
 class EmberPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for HA Ember+.
+    """Handle a config flow for HA EmberPlus.
 
     Step 1: IP + port
     Step 2: Auto-discover all parameters, let user select
@@ -161,7 +161,7 @@ class EmberPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class EmberPlusOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for HA Ember+."""
+    """Handle options for HA EmberPlus."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialise the options flow."""

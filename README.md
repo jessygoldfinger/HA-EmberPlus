@@ -1,4 +1,4 @@
-# HA Ember+ – Home Assistant Integration
+# HA EmberPlus – Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -36,7 +36,7 @@ Auto-discovers all parameters and exposes them as switches, numbers, and sensors
 1. Open HACS in Home Assistant
 2. Go to **Integrations** → **⋮** → **Custom repositories**
 3. Add `https://github.com/jessygoldfinger/HA-EmberPlus` and select **Integration** as the category
-4. Search for **HA Ember+** and install it
+4. Search for **HA EmberPlus** and install it
 5. Restart Home Assistant
 
 ### Manual
@@ -47,7 +47,7 @@ Auto-discovers all parameters and exposes them as switches, numbers, and sensors
 ## Configuration
 
 1. Go to **Settings** → **Devices & Services** → **Add Integration**
-2. Search for **HA Ember+**
+2. Search for **HA EmberPlus**
 3. Enter the **IP address** and **port** (default: 9000) of your Ember+ device
 4. The integration will **auto-discover** all parameters from the Ember+ tree
 5. Select which parameters you want to add (grouped by node, e.g. "MIC > Fader")

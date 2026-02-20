@@ -1,4 +1,4 @@
-"""Base entity for the HA Ember+ integration."""
+"""Base entity for the HA EmberPlus integration."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ class EmberPlusEntity(CoordinatorEntity[EmberPlusCoordinator]):
             identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
             name=self.coordinator.config_entry.title,
             manufacturer="Jessy Goldfinger",
-            model="HA Ember+",
+            model="HA EmberPlus",
             configuration_url=(
                 f"http://{self.coordinator.client.host}"
             ),

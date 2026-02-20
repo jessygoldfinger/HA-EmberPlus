@@ -1,4 +1,4 @@
-"""Switch platform for the HA Ember+ integration."""
+"""Switch platform for the HA EmberPlus integration."""
 
 from __future__ import annotations
 

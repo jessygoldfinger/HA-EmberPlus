@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "HA Ember+ instellen",
+        "title": "HA EmberPlus instellen",
         "description": "Verbind met je Ember+ apparaat (TCP-poort 9000). Parameters worden automatisch ontdekt.",
         "data": {
           "host": "Host",

@@ -1,4 +1,4 @@
-"""Constants for the HA Ember+ integration."""
+"""Constants for the HA EmberPlus integration."""
 
 DOMAIN = "ember_plus"
 

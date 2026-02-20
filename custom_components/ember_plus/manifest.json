@@ -1,6 +1,6 @@
 {
   "domain": "ember_plus",
-  "name": "HA Ember+",
+  "name": "HA EmberPlus",
   "codeowners": ["@jessygoldfinger"],
   "config_flow": true,
   "documentation": "https://github.com/jessygoldfinger/HA-EmberPlus",

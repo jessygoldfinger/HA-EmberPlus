@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for the HA Ember+ integration."""
+"""DataUpdateCoordinator for the HA EmberPlus integration."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""The HA Ember+ integration."""
+"""The HA EmberPlus integration."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SENSOR, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up HA Ember+ from a config entry."""
+    """Set up HA EmberPlus from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
 

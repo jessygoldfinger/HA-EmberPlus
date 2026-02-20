@@ -1,4 +1,4 @@
-"""Sensor platform for the HA Ember+ integration."""
+"""Sensor platform for the HA EmberPlus integration."""
 
 from __future__ import annotations
 
