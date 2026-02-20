@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HA EmberPlus",
+        "description": "Connect to your Ember+ device (TCP port 9000). Parameters will be auto-discovered.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      },
+      "select_params": {
+        "title": "Select parameters",
+        "description": "Found {param_count} parameter(s). Select which to add.",
+        "data": {
+          "params": "Parameters"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the Ember+ device. Check the IP address and port."
+    },
+    "abort": {
+      "already_configured": "This Ember+ device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage parameters",
+        "description": "Found {param_count} parameter(s). Select which to use.",
+        "data": {
+          "params": "Parameters"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the Ember+ device to scan the tree."
+    }
+  }
+}

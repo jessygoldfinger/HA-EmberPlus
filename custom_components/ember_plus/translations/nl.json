@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA EmberPlus instellen",
+        "description": "Verbind met je Ember+ apparaat (TCP-poort 9000). Parameters worden automatisch ontdekt.",
+        "data": {
+          "host": "Host",
+          "port": "Poort"
+        }
+      },
+      "select_params": {
+        "title": "Selecteer parameters",
+        "description": "{param_count} parameter(s) gevonden. Selecteer welke je wilt toevoegen.",
+        "data": {
+          "params": "Parameters"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan niet verbinden met het Ember+ apparaat. Controleer IP-adres en poort."
+    },
+    "abort": {
+      "already_configured": "Dit Ember+ apparaat is al geconfigureerd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Parameters beheren",
+        "description": "{param_count} parameter(s) gevonden. Selecteer welke je wilt gebruiken.",
+        "data": {
+          "params": "Parameters"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan niet verbinden met het Ember+ apparaat om de tree te scannen."
+    }
+  }
+}
