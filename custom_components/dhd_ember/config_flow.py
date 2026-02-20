@@ -7,14 +7,10 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import (
-    ConfigEntry,
-    ConfigFlow,
-    OptionsFlow,
-)
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_GPIS,
@@ -29,7 +25,7 @@ from .ember import EmberClient, EmberConnectionError
 _LOGGER = logging.getLogger(__name__)
 
 
-class DHDEmberConfigFlow(ConfigFlow, domain=DOMAIN):
+class DHDEmberConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for HA DHD Ember+.
 
     Step 1: IP + port
@@ -47,7 +43,7 @@ class DHDEmberConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_gpos: dict[int, str] = {}
 
     async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
         """Handle connection setup."""
         errors: dict[str, str] = {}
@@ -72,7 +68,6 @@ class DHDEmberConfigFlow(ConfigFlow, domain=DOMAIN):
                 if self._discovered_gpis or self._discovered_gpos:
                     return await self.async_step_select_ios()
 
-                # No GPIs/GPOs found — create entry anyway
                 return self.async_create_entry(
                     title=f"HA DHD Ember+ ({self._host})",
                     data={
@@ -95,7 +90,7 @@ class DHDEmberConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_select_ios(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
         """Let the user select which GPIs and GPOs to add."""
         if user_input is not None:
@@ -161,39 +156,23 @@ class DHDEmberConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(
-        config_entry: ConfigEntry,
+        config_entry: config_entries.ConfigEntry,
     ) -> DHDEmberOptionsFlow:
         """Return the options flow handler."""
         return DHDEmberOptionsFlow(config_entry)
 
 
-class DHDEmberOptionsFlow(OptionsFlow):
-    """Handle options for HA DHD Ember+.
+class DHDEmberOptionsFlow(config_entries.OptionsFlow):
+    """Handle options for HA DHD Ember+."""
 
-    Scans the mixer's Ember+ tree and shows all available GPIs/GPOs.
-    The user selects which ones to keep — deselect to remove, select to add.
-    """
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialise the options flow."""
         self._config_entry = config_entry
-        self._gpis: list[dict[str, Any]] = list(
-            config_entry.options.get(
-                CONF_GPIS,
-                config_entry.data.get(CONF_GPIS, []),
-            )
-        )
-        self._gpos: list[dict[str, Any]] = list(
-            config_entry.options.get(
-                CONF_GPOS,
-                config_entry.data.get(CONF_GPOS, []),
-            )
-        )
         self._available_gpis: dict[int, str] = {}
         self._available_gpos: dict[int, str] = {}
 
     async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
         """Scan the mixer and show all GPIs/GPOs for selection."""
         errors: dict[str, str] = {}
@@ -202,14 +181,14 @@ class DHDEmberOptionsFlow(OptionsFlow):
             selected_gpis = user_input.get("gpis", [])
             selected_gpos = user_input.get("gpos", [])
 
-            self._gpis = [
+            gpis = [
                 {
                     CONF_IO_NUMBER: num,
                     CONF_IO_NAME: self._available_gpis.get(num, f"GPI {num}"),
                 }
                 for num in selected_gpis
             ]
-            self._gpos = [
+            gpos = [
                 {
                     CONF_IO_NUMBER: num,
                     CONF_IO_NAME: self._available_gpos.get(num, f"GPO {num}"),
@@ -219,7 +198,7 @@ class DHDEmberOptionsFlow(OptionsFlow):
 
             return self.async_create_entry(
                 title="",
-                data={CONF_GPIS: self._gpis, CONF_GPOS: self._gpos},
+                data={CONF_GPIS: gpis, CONF_GPOS: gpos},
             )
 
         # Scan the mixer tree
@@ -242,8 +221,14 @@ class DHDEmberOptionsFlow(OptionsFlow):
             )
 
         # Currently configured numbers
-        current_gpi_nums = {int(g[CONF_IO_NUMBER]) for g in self._gpis}
-        current_gpo_nums = {int(g[CONF_IO_NUMBER]) for g in self._gpos}
+        gpis_conf: list[dict[str, Any]] = self._config_entry.options.get(
+            CONF_GPIS, self._config_entry.data.get(CONF_GPIS, []),
+        )
+        gpos_conf: list[dict[str, Any]] = self._config_entry.options.get(
+            CONF_GPOS, self._config_entry.data.get(CONF_GPOS, []),
+        )
+        current_gpi_nums = {int(g[CONF_IO_NUMBER]) for g in gpis_conf}
+        current_gpo_nums = {int(g[CONF_IO_NUMBER]) for g in gpos_conf}
 
         schema_fields: dict[Any, Any] = {}
 
