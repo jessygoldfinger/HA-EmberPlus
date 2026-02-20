@@ -55,14 +55,14 @@ _CRC_TABLE: list[int] = []
 
 
 def _init_crc_table() -> None:
+    """Build CRC-16/MCRF4XX lookup table (reflected poly 0x8408)."""
     for i in range(256):
-        crc = i << 8
+        crc = i
         for _ in range(8):
-            if crc & 0x8000:
-                crc = (crc << 1) ^ 0x1021
+            if crc & 0x0001:
+                crc = (crc >> 1) ^ 0x8408
             else:
-                crc = crc << 1
-            crc &= 0xFFFF
+                crc >>= 1
         _CRC_TABLE.append(crc)
 
 
@@ -70,9 +70,10 @@ _init_crc_table()
 
 
 def _crc_ccitt16(data: bytes, init: int = 0xFFFF) -> int:
+    """CRC-16/MCRF4XX: reflected CCITT with poly 0x1021, init 0xFFFF."""
     crc = init
     for b in data:
-        crc = ((_CRC_TABLE[((crc >> 8) ^ b) & 0xFF]) ^ (crc << 8)) & 0xFFFF
+        crc = (_CRC_TABLE[(crc ^ b) & 0xFF] ^ (crc >> 8)) & 0xFFFF
     return crc
 
 
@@ -334,8 +335,8 @@ def ber_decode_utf8(data: bytes, offset: int, length: int) -> str:
 GLOW_TAG_ROOT_ELEMENT_COLLECTION = ber_encode_tag(
     BER_CLASS_APPLICATION, True, 11
 )
-GLOW_TAG_QUALIFIED_NODE = ber_encode_tag(BER_CLASS_APPLICATION, True, 3)
-GLOW_TAG_QUALIFIED_PARAM = ber_encode_tag(BER_CLASS_APPLICATION, True, 4)
+GLOW_TAG_QUALIFIED_NODE = ber_encode_tag(BER_CLASS_APPLICATION, True, 10)
+GLOW_TAG_QUALIFIED_PARAM = ber_encode_tag(BER_CLASS_APPLICATION, True, 9)
 GLOW_TAG_COMMAND = ber_encode_tag(BER_CLASS_APPLICATION, True, 2)
 
 # Context tags for QualifiedNode
@@ -383,6 +384,9 @@ def _encode_oid(path: list[int]) -> bytes:
 
 def build_get_directory(path: list[int] | None = None) -> bytes:
     """Build a Glow getDirectory command for a given path."""
+    # ElementCollection.element tag = Context[0]
+    elem_tag = ber_encode_tag(BER_CLASS_CONTEXT, True, 0)
+
     cmd_number = ber_encode_integer(GLOW_CMD_DIR)
     cmd_contents = ber_tlv(
         ber_encode_tag(BER_CLASS_CONTEXT, False, 0),
@@ -391,6 +395,7 @@ def build_get_directory(path: list[int] | None = None) -> bytes:
     command = ber_tlv(GLOW_TAG_COMMAND, cmd_contents)
 
     if path is None:
+        # Root: RootElementCollection > Command
         return ber_tlv(GLOW_TAG_ROOT_ELEMENT_COLLECTION, command)
 
     oid = _encode_oid(path)
@@ -398,15 +403,19 @@ def build_get_directory(path: list[int] | None = None) -> bytes:
         GLOW_CTX_NODE_PATH,
         bytes([0x0D]) + ber_encode_length(len(oid)) + oid,
     )
+    # Wrap command in elementCollection.element > Command
+    cmd_in_elem = ber_tlv(elem_tag, command)
     children_tlv = ber_tlv(
         GLOW_CTX_NODE_CHILDREN,
         ber_tlv(
             ber_encode_tag(BER_CLASS_APPLICATION, True, 4),
-            command,
+            cmd_in_elem,
         ),
     )
+    # Wrap QualifiedNode in elementCollection.element
     node = ber_tlv(GLOW_TAG_QUALIFIED_NODE, path_tlv + children_tlv)
-    return ber_tlv(GLOW_TAG_ROOT_ELEMENT_COLLECTION, node)
+    wrapped = ber_tlv(elem_tag, node)
+    return ber_tlv(GLOW_TAG_ROOT_ELEMENT_COLLECTION, wrapped)
 
 
 def build_set_value(path: list[int], value: bool) -> bytes:
@@ -492,10 +501,19 @@ def _parse_element(
         if offset >= len(data):
             break
 
-        tag_class, tag_number, constructed, offset = ber_decode_tag(
-            data, offset
-        )
-        length, offset = ber_decode_length(data, offset)
+        # Stop on zero-padding (DHD pads frames with 0x00 bytes)
+        if data[offset] == 0x00:
+            break
+
+        try:
+            tag_class, tag_number, constructed, new_offset = ber_decode_tag(
+                data, offset
+            )
+            length, new_offset = ber_decode_length(data, new_offset)
+        except EmberProtocolError:
+            break
+
+        offset = new_offset
 
         if length == -1:
             content_end = _find_eoc(data, offset)
@@ -506,24 +524,23 @@ def _parse_element(
             break
 
         if tag_class == BER_CLASS_APPLICATION and constructed:
-            if tag_number == 3:
+            if tag_number == 10:
                 node = _parse_qualified_node(data, offset, content_end)
                 if node:
                     nodes.append(node)
-            elif tag_number == 4:
+            elif tag_number == 9:
                 node = _parse_qualified_parameter(data, offset, content_end)
                 if node:
                     nodes.append(node)
-            elif tag_number == 11:
-                _parse_element(data, offset, content_end, nodes)
             else:
+                # RootElementCollection(11), ElementCollection(4), etc.
                 _parse_element(data, offset, content_end, nodes)
         elif constructed:
             _parse_element(data, offset, content_end, nodes)
 
         offset = content_end
         if length == -1:
-            offset += 2
+            offset += 2  # skip EOC (0x00, 0x00)
 
 
 def _find_eoc(data: bytes, offset: int) -> int:
@@ -565,8 +582,13 @@ def _parse_qualified_node(
     pos = offset
 
     while pos < end:
-        tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
-        length, pos = ber_decode_length(data, pos)
+        if pos >= len(data) or data[pos] == 0x00:
+            break
+        try:
+            tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
+            length, pos = ber_decode_length(data, pos)
+        except EmberProtocolError:
+            break
         content_end = pos + length if length >= 0 else _find_eoc(data, pos)
 
         if tag_class == BER_CLASS_CONTEXT:
@@ -596,8 +618,13 @@ def _parse_qualified_parameter(
     pos = offset
 
     while pos < end:
-        tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
-        length, pos = ber_decode_length(data, pos)
+        if pos >= len(data) or data[pos] == 0x00:
+            break
+        try:
+            tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
+            length, pos = ber_decode_length(data, pos)
+        except EmberProtocolError:
+            break
         content_end = pos + length if length >= 0 else _find_eoc(data, pos)
 
         if tag_class == BER_CLASS_CONTEXT:
@@ -619,19 +646,37 @@ def _parse_node_contents(
     """Parse the contents SET of a node."""
     pos = offset
     while pos < end:
-        tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
-        length, pos = ber_decode_length(data, pos)
+        if pos >= len(data) or data[pos] == 0x00:
+            break
+        try:
+            tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
+            length, pos = ber_decode_length(data, pos)
+        except EmberProtocolError:
+            break
         content_end = pos + length if length >= 0 else _find_eoc(data, pos)
 
-        if tag_class == BER_CLASS_CONTEXT:
+        if tag_class == BER_CLASS_UNIVERSAL and constructed:
+            # SET or SEQUENCE wrapper — recurse into it
+            _parse_node_contents(data, pos, content_end, node)
+        elif tag_class == BER_CLASS_CONTEXT:
             if tag_number == 0:
-                node.identifier = ber_decode_utf8(
-                    data, pos, content_end - pos
-                )
+                if constructed:
+                    node.identifier = _decode_string_value(
+                        data, pos, content_end
+                    )
+                else:
+                    node.identifier = ber_decode_utf8(
+                        data, pos, content_end - pos
+                    )
             elif tag_number == 1:
-                node.description = ber_decode_utf8(
-                    data, pos, content_end - pos
-                )
+                if constructed:
+                    node.description = _decode_string_value(
+                        data, pos, content_end
+                    )
+                else:
+                    node.description = ber_decode_utf8(
+                        data, pos, content_end - pos
+                    )
 
         pos = content_end
         if length == -1:
@@ -641,14 +686,26 @@ def _parse_node_contents(
 def _parse_param_contents(
     data: bytes, offset: int, end: int, node: EmberNode
 ) -> None:
-    """Parse the contents SET of a parameter."""
+    """Parse the contents SET of a parameter.
+
+    DHD wraps contents in: Context[1] > SET > Context[n] > value.
+    The SET may use indefinite length.
+    """
     pos = offset
     while pos < end:
-        tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
-        length, pos = ber_decode_length(data, pos)
+        if pos >= len(data) or data[pos] == 0x00:
+            break
+        try:
+            tag_class, tag_number, constructed, pos = ber_decode_tag(data, pos)
+            length, pos = ber_decode_length(data, pos)
+        except EmberProtocolError:
+            break
         content_end = pos + length if length >= 0 else _find_eoc(data, pos)
 
-        if tag_class == BER_CLASS_CONTEXT:
+        if tag_class == BER_CLASS_UNIVERSAL and constructed:
+            # SET or SEQUENCE wrapper — recurse into it
+            _parse_param_contents(data, pos, content_end, node)
+        elif tag_class == BER_CLASS_CONTEXT:
             if tag_number == 0:
                 node.identifier = ber_decode_utf8(
                     data, pos, content_end - pos
@@ -658,11 +715,18 @@ def _parse_param_contents(
                     data, pos, content_end - pos
                 )
             elif tag_number == 2:
-                node.value = _decode_value(data, pos, content_end)
+                if constructed:
+                    # Value is wrapped in a constructed context tag
+                    node.value = _decode_value(data, pos, content_end)
+                else:
+                    node.value = _decode_value(data, pos, content_end)
             elif tag_number == 3:
-                node.access = ber_decode_integer(
-                    data, pos, content_end - pos
-                )
+                if constructed:
+                    node.access = _decode_integer_value(data, pos, content_end)
+                else:
+                    node.access = ber_decode_integer(
+                        data, pos, content_end - pos
+                    )
 
         pos = content_end
         if length == -1:
@@ -671,10 +735,13 @@ def _parse_param_contents(
 
 def _decode_value(data: bytes, offset: int, end: int) -> Any:
     """Decode a BER-encoded value (boolean, integer, or string)."""
-    if offset >= end:
+    if offset >= end or data[offset] == 0x00:
         return None
-    tag_class, tag_number, constructed, pos = ber_decode_tag(data, offset)
-    length, pos = ber_decode_length(data, pos)
+    try:
+        tag_class, tag_number, constructed, pos = ber_decode_tag(data, offset)
+        length, pos = ber_decode_length(data, pos)
+    except EmberProtocolError:
+        return None
     if tag_class == BER_CLASS_UNIVERSAL:
         if tag_number == BER_TAG_BOOLEAN:
             return ber_decode_boolean(data, pos, length)
@@ -683,6 +750,37 @@ def _decode_value(data: bytes, offset: int, end: int) -> Any:
         if tag_number == BER_TAG_UTF8STRING:
             return ber_decode_utf8(data, pos, length)
     return data[pos : pos + length] if length > 0 else None
+
+
+def _decode_string_value(data: bytes, offset: int, end: int) -> str:
+    """Decode a BER UTF8String value, possibly wrapped in a constructed tag."""
+    if offset >= end or data[offset] == 0x00:
+        return ""
+    try:
+        tag_class, tag_number, constructed, pos = ber_decode_tag(data, offset)
+        length, pos = ber_decode_length(data, pos)
+    except EmberProtocolError:
+        return ""
+    if tag_class == BER_CLASS_UNIVERSAL and tag_number == BER_TAG_UTF8STRING:
+        return ber_decode_utf8(data, pos, length)
+    # Fallback: try to read as raw string
+    if length > 0:
+        return data[pos : pos + length].decode("utf-8", errors="replace")
+    return ""
+
+
+def _decode_integer_value(data: bytes, offset: int, end: int) -> int:
+    """Decode a BER INTEGER value, possibly wrapped in a constructed tag."""
+    if offset >= end or data[offset] == 0x00:
+        return 0
+    try:
+        tag_class, tag_number, constructed, pos = ber_decode_tag(data, offset)
+        length, pos = ber_decode_length(data, pos)
+    except EmberProtocolError:
+        return 0
+    if tag_class == BER_CLASS_UNIVERSAL and tag_number == BER_TAG_INTEGER:
+        return ber_decode_integer(data, pos, length)
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -952,18 +1050,19 @@ class EmberClient:
         io_type: str | None = None
         number: int | None = None
 
-        # DHD tree: Device(1) > GPI(2) > GPI x(n)
-        # DHD tree: Device(1) > GPO(3) > GPO x(n)
+        # DHD tree: Device(0) > GPI(1) > GPI x(n)
+        # DHD tree: Device(0) > GPO(2) > GPO x(n)
         if len(path) >= 3:
-            if path[1] == 2:
+            if path[1] == 1:
                 io_type = "gpi"
                 number = path[2]
-            elif path[1] == 3:
+            elif path[1] == 2:
                 io_type = "gpo"
                 number = path[2]
 
+        # Fallback: detect from identifier
         if io_type is None or number is None:
-            ident = param.identifier.lower()
+            ident = param.identifier.strip().lower()
             if ident.startswith("gpi"):
                 io_type = "gpi"
                 try:
@@ -979,22 +1078,30 @@ class EmberClient:
             else:
                 return
 
+        # Strip leading/trailing whitespace from identifier and description
+        clean_ident = param.identifier.strip() if param.identifier else ""
+        clean_desc = param.description.strip() if param.description else ""
+
         if isinstance(param.value, bool):
             old_state = None
             if io_type == "gpi":
                 old_state = self._gpi_states.get(number)
                 self._gpi_states[number] = param.value
-                if param.description:
-                    self._gpi_labels[number] = param.description
-                elif param.identifier:
-                    self._gpi_labels.setdefault(number, param.identifier)
+                if clean_desc:
+                    self._gpi_labels[number] = clean_desc
+                elif clean_ident:
+                    self._gpi_labels.setdefault(number, clean_ident)
+                else:
+                    self._gpi_labels.setdefault(number, f"GPI {number}")
             elif io_type == "gpo":
                 old_state = self._gpo_states.get(number)
                 self._gpo_states[number] = param.value
-                if param.description:
-                    self._gpo_labels[number] = param.description
-                elif param.identifier:
-                    self._gpo_labels.setdefault(number, param.identifier)
+                if clean_desc:
+                    self._gpo_labels[number] = clean_desc
+                elif clean_ident:
+                    self._gpo_labels.setdefault(number, clean_ident)
+                else:
+                    self._gpo_labels.setdefault(number, f"GPO {number}")
 
             if old_state != param.value and self._state_callback is not None:
                 _LOGGER.debug(
@@ -1019,37 +1126,43 @@ class EmberClient:
             await self._writer.drain()
 
     async def discover(self) -> None:
-        """Discover the Ember+ tree: GPIs and GPOs."""
+        """Discover the Ember+ tree by recursive getDirectory walk."""
         _LOGGER.debug("Discovering Ember+ tree...")
 
-        # Request root directory
-        await self._send_ember(build_get_directory())
-        await asyncio.sleep(0.5)
+        # Walk the tree: getDirectory on root, then each discovered node
+        visited: set[tuple[int, ...]] = set()
+        queue: list[list[int] | None] = [None]  # None = root
 
-        # Request Device node (path [1])
-        await self._send_ember(build_get_directory([1]))
-        await asyncio.sleep(0.5)
+        while queue:
+            path = queue.pop(0)
+            path_key = tuple(path) if path else ()
+            if path_key in visited:
+                continue
+            visited.add(path_key)
 
-        # Request GPI node (path [1, 2])
-        await self._send_ember(build_get_directory([1, 2]))
-        await asyncio.sleep(0.5)
+            await self._send_ember(build_get_directory(path))
+            await asyncio.sleep(0.5)
 
-        # Request GPO node (path [1, 3])
-        await self._send_ember(build_get_directory([1, 3]))
-        await asyncio.sleep(1.0)
+            # Drain response queue and look for new nodes to walk
+            while not self._response_queue.empty():
+                try:
+                    ber_data = self._response_queue.get_nowait()
+                    nodes = parse_glow_response(ber_data)
+                    for node in nodes:
+                        if node.path and not node.is_parameter:
+                            node_path = node.path
+                            if tuple(node_path) not in visited:
+                                queue.append(node_path)
+                except Exception:
+                    break
 
-        # Request individual GPIs (1-50)
-        for i in range(1, 51):
-            await self._send_ember(build_get_directory([1, 2, i]))
-            await asyncio.sleep(0.1)
+            # Limit depth to avoid infinite loops
+            if len(visited) > 200:
+                _LOGGER.warning("Ember+ tree walk: depth limit reached")
+                break
 
-        # Request individual GPOs (1-50)
-        for i in range(1, 51):
-            await self._send_ember(build_get_directory([1, 3, i]))
-            await asyncio.sleep(0.1)
-
-        # Wait for responses to settle
-        await asyncio.sleep(1.0)
+        # Wait for any remaining push updates
+        await asyncio.sleep(2.0)
 
         _LOGGER.info(
             "Ember+ discovery complete: %d GPIs, %d GPOs",
@@ -1058,15 +1171,15 @@ class EmberClient:
 
     async def subscribe_all(self) -> None:
         """Subscribe to all GPI and GPO changes for push updates."""
-        await self._send_ember(build_subscribe([1, 2]))
+        await self._send_ember(build_subscribe([0, 1]))
         await asyncio.sleep(0.2)
-        await self._send_ember(build_subscribe([1, 3]))
+        await self._send_ember(build_subscribe([0, 2]))
         await asyncio.sleep(0.2)
         _LOGGER.debug("Subscribed to GPI and GPO changes")
 
     async def set_gpi_state(self, number: int, state: bool) -> None:
         """Set a GPI to on or off."""
         _LOGGER.debug("Setting GPI %d to %s", number, state)
-        glow = build_set_value([1, 2, number], state)
+        glow = build_set_value([0, 1, number], state)
         await self._send_ember(glow)
         self._gpi_states[number] = state
