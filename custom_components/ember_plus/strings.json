@@ -3,43 +3,39 @@
     "step": {
       "user": {
         "title": "Set up HA Ember+",
-        "description": "Connect to your Ember+ device (TCP port 9000). GPIs and GPOs will be auto-discovered.",
+        "description": "Connect to your Ember+ device (TCP port 9000). Parameters will be auto-discovered.",
         "data": {
           "host": "[%key:common::config_flow::data::host%]",
           "port": "[%key:common::config_flow::data::port%]"
         }
       },
-      "select_ios": {
-        "title": "Select GPIs and GPOs",
-        "description": "Found {gpi_count} GPI(s) and {gpo_count} GPO(s). Select which to add.",
+      "select_params": {
+        "title": "Select parameters",
+        "description": "Found {param_count} parameter(s). Select which to add.",
         "data": {
-          "gpis": "GPIs (switches, read/write)",
-          "gpos": "GPOs (sensors, read-only)"
+          "params": "Parameters"
         }
       }
     },
     "error": {
-      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
-      "already_configured": "This GPI/GPO is already configured.",
-      "invalid_number": "Number must be between 1 and 50."
+      "cannot_connect": "Cannot connect to the Ember+ device. Check the IP address and port."
     },
     "abort": {
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+      "already_configured": "This Ember+ device is already configured."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Manage GPIs and GPOs",
-        "description": "Scanning mixer... Found {gpi_count} GPI(s) and {gpo_count} GPO(s). Select which to use.",
+        "title": "Manage parameters",
+        "description": "Found {param_count} parameter(s). Select which to use.",
         "data": {
-          "gpis": "GPIs (switches, read/write)",
-          "gpos": "GPOs (sensors, read-only)"
+          "params": "Parameters"
         }
       }
     },
     "error": {
-      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
+      "cannot_connect": "Cannot connect to the Ember+ device to scan the tree."
     }
   }
 }

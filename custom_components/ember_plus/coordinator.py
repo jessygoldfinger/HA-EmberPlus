@@ -12,16 +12,17 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
-from .const import CONF_GPIS, CONF_GPOS, CONF_IO_NUMBER, DOMAIN
+from .const import CONF_PARAMS, CONF_PATH_KEY, DOMAIN
 from .ember import EmberClient, EmberConnectionError
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class EmberPlusCoordinator(DataUpdateCoordinator[dict[str, dict[int, bool]]]):
+class EmberPlusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator that receives push updates via Ember+.
 
-    Data structure: {"gpi": {1: True, 2: False, ...}, "gpo": {1: False, ...}}
+    Data structure: {"0.1.3": True, "0.3.0.2": -16000, ...}
+    Keys are path_keys, values are the current parameter values.
     No periodic polling — the device pushes all changes instantly.
     """
 
@@ -38,63 +39,42 @@ class EmberPlusCoordinator(DataUpdateCoordinator[dict[str, dict[int, bool]]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=None,
         )
         self.client = client
         self.config_entry = entry
 
-        # Register the push callback on the Ember+ client.
-        self.client.set_state_callback(self._handle_push)
-
-    def _get_configured_ios(self) -> dict[str, list[int]]:
-        """Return configured GPI and GPO numbers from config entry."""
-        gpis_conf: list[dict[str, Any]] = self.config_entry.options.get(
-            CONF_GPIS,
-            self.config_entry.data.get(CONF_GPIS, []),
+        # Build set of configured path_keys
+        params_conf = entry.options.get(
+            CONF_PARAMS, entry.data.get(CONF_PARAMS, [])
         )
-        gpos_conf: list[dict[str, Any]] = self.config_entry.options.get(
-            CONF_GPOS,
-            self.config_entry.data.get(CONF_GPOS, []),
-        )
-        return {
-            "gpi": [int(g[CONF_IO_NUMBER]) for g in gpis_conf],
-            "gpo": [int(g[CONF_IO_NUMBER]) for g in gpos_conf],
+        self._configured_keys: set[str] = {
+            p[CONF_PATH_KEY] for p in params_conf
         }
 
+        # Register push callback
+        self.client.set_state_callback(self._on_state_change)
+
     @callback
-    def _handle_push(self, io_type: str, number: int, state: bool) -> None:
-        """Handle an unsolicited state change from the mixer."""
-        configured = self._get_configured_ios()
-        if number not in configured.get(io_type, []):
-            return
+    def _on_state_change(self, path_key: str, value: Any) -> None:
+        """Handle a push update from the Ember+ client."""
+        if path_key in self._configured_keys:
+            self.async_set_updated_data(self._build_data())
 
-        if self.data is None:
-            self.data = {"gpi": {}, "gpo": {}}
+    def _build_data(self) -> dict[str, Any]:
+        """Build the data dict from current client states."""
+        result: dict[str, Any] = {}
+        for pk in self._configured_keys:
+            param = self.client.parameters.get(pk)
+            if param is not None:
+                result[pk] = param.value
+        return result
 
-        if self.data.get(io_type, {}).get(number) == state:
-            return
-
-        _LOGGER.debug(
-            "Instant update: %s %d → %s", io_type, number, state,
-        )
-        self.data.setdefault(io_type, {})[number] = state
-        self.async_set_updated_data(self.data)
-
-    async def _async_update_data(self) -> dict[str, dict[int, bool]]:
-        """Fetch the current state of all configured GPIs and GPOs."""
-        configured = self._get_configured_ios()
-
-        states: dict[str, dict[int, bool]] = {"gpi": {}, "gpo": {}}
-
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Fetch latest data (called on first refresh and manual refreshes)."""
         try:
-            for num in configured["gpi"]:
-                states["gpi"][num] = self.client.gpi_states.get(num, False)
-            for num in configured["gpo"]:
-                states["gpo"][num] = self.client.gpo_states.get(num, False)
+            return self._build_data()
         except EmberConnectionError as err:
             await self.client.disconnect()
             raise UpdateFailed(
                 f"Lost connection to Ember+ device: {err}"
             ) from err
-
-        return states

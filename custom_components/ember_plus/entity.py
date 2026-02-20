@@ -17,18 +17,16 @@ class EmberPlusEntity(CoordinatorEntity[EmberPlusCoordinator]):
     def __init__(
         self,
         coordinator: EmberPlusCoordinator,
-        io_type: str,
-        io_number: int,
-        io_name: str,
+        path_key: str,
+        label: str,
     ) -> None:
         """Initialise the entity."""
         super().__init__(coordinator)
-        self._io_type = io_type
-        self._io_number = io_number
+        self._path_key = path_key
         self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}_{io_type}_{io_number}"
+            f"{coordinator.config_entry.entry_id}_{path_key}"
         )
-        self._attr_name = io_name
+        self._attr_name = label
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -37,7 +35,7 @@ class EmberPlusEntity(CoordinatorEntity[EmberPlusCoordinator]):
             identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
             name=self.coordinator.config_entry.title,
             manufacturer="Jessy Goldfinger",
-            model="HA Ember+ integration",
+            model="HA Ember+",
             configuration_url=(
                 f"http://{self.coordinator.client.host}"
             ),
@@ -50,6 +48,5 @@ class EmberPlusEntity(CoordinatorEntity[EmberPlusCoordinator]):
             super().available
             and self.coordinator.client.connected
             and self.coordinator.data is not None
-            and self._io_number
-            in (self.coordinator.data.get(self._io_type) or {})
+            and self._path_key in self.coordinator.data
         )

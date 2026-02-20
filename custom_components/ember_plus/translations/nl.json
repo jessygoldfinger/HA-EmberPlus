@@ -3,25 +3,22 @@
     "step": {
       "user": {
         "title": "HA Ember+ instellen",
-        "description": "Verbind met je Ember+ apparaat (TCP-poort 9000). GPI's en GPO's worden automatisch ontdekt.",
+        "description": "Verbind met je Ember+ apparaat (TCP-poort 9000). Parameters worden automatisch ontdekt.",
         "data": {
           "host": "Host",
           "port": "Poort"
         }
       },
-      "select_ios": {
-        "title": "Selecteer GPI's en GPO's",
-        "description": "{gpi_count} GPI('s) en {gpo_count} GPO('s) gevonden. Selecteer welke je wilt toevoegen.",
+      "select_params": {
+        "title": "Selecteer parameters",
+        "description": "{param_count} parameter(s) gevonden. Selecteer welke je wilt toevoegen.",
         "data": {
-          "gpis": "GPI's (schakelaars, lezen/schrijven)",
-          "gpos": "GPO's (sensoren, alleen lezen)"
+          "params": "Parameters"
         }
       }
     },
     "error": {
-      "cannot_connect": "Kan niet verbinden met het Ember+ apparaat. Controleer IP-adres en poort.",
-      "already_configured": "Deze GPI/GPO is al geconfigureerd.",
-      "invalid_number": "Nummer moet tussen 1 en 50 liggen."
+      "cannot_connect": "Kan niet verbinden met het Ember+ apparaat. Controleer IP-adres en poort."
     },
     "abort": {
       "already_configured": "Dit Ember+ apparaat is al geconfigureerd."
@@ -30,11 +27,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "GPI's en GPO's beheren",
-        "description": "Apparaat scannen... {gpi_count} GPI('s) en {gpo_count} GPO('s) gevonden. Selecteer welke je wilt gebruiken.",
+        "title": "Parameters beheren",
+        "description": "{param_count} parameter(s) gevonden. Selecteer welke je wilt gebruiken.",
         "data": {
-          "gpis": "GPI's (schakelaars, lezen/schrijven)",
-          "gpos": "GPO's (sensoren, alleen lezen)"
+          "params": "Parameters"
         }
       }
     },

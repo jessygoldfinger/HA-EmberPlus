@@ -14,24 +14,48 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
-    CONF_GPIS,
-    CONF_GPOS,
-    CONF_IO_NAME,
-    CONF_IO_NUMBER,
+    CONF_PARAMS,
+    CONF_PARAM_LABEL,
+    CONF_PATH_KEY,
     DEFAULT_PORT,
     DOMAIN,
 )
-from .ember import EmberClient, EmberConnectionError
+from .ember import EmberClient, EmberConnectionError, EmberParam
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _build_param_options(
+    params: dict[str, EmberParam],
+    node_labels: dict[str, str],
+) -> dict[str, str]:
+    """Build a {path_key: display_label} dict for multi_select.
+
+    Groups parameters under their parent node label for clarity.
+    Skips parameters with unknown/None values.
+    """
+    options: dict[str, str] = {}
+    for pk in sorted(params.keys()):
+        p = params[pk]
+        if p.value is None:
+            continue
+        # Find parent node label
+        parts = pk.rsplit(".", 1)
+        parent_key = parts[0] if len(parts) > 1 else ""
+        parent_label = node_labels.get(parent_key, "")
+        if parent_label:
+            display = f"{parent_label} > {p.label}"
+        else:
+            display = p.label
+        options[pk] = display
+    return options
 
 
 class EmberPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for HA Ember+.
 
     Step 1: IP + port
-    Step 2: Auto-discover GPIs/GPOs, let user select which to add
-    Done.  More can be added via Options.
+    Step 2: Auto-discover all parameters, let user select
     """
 
     VERSION = 1
@@ -40,8 +64,8 @@ class EmberPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialise the config flow."""
         self._host: str = ""
         self._port: int = DEFAULT_PORT
-        self._discovered_gpis: dict[int, str] = {}
-        self._discovered_gpos: dict[int, str] = {}
+        self._discovered: dict[str, EmberParam] = {}
+        self._node_labels: dict[str, str] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None,
@@ -62,20 +86,19 @@ class EmberPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except (EmberConnectionError, OSError, TimeoutError):
                 errors["base"] = "cannot_connect"
             else:
-                self._discovered_gpis = client.gpi_labels
-                self._discovered_gpos = client.gpo_labels
+                self._discovered = client.parameters
+                self._node_labels = client.node_labels
                 await client.disconnect()
 
-                if self._discovered_gpis or self._discovered_gpos:
-                    return await self.async_step_select_ios()
+                if self._discovered:
+                    return await self.async_step_select_params()
 
                 return self.async_create_entry(
                     title=f"Ember+ ({self._host})",
                     data={
                         CONF_HOST: self._host,
                         CONF_PORT: self._port,
-                        CONF_GPIS: [],
-                        CONF_GPOS: [],
+                        CONF_PARAMS: [],
                     },
                 )
 
@@ -90,65 +113,41 @@ class EmberPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_select_ios(
+    async def async_step_select_params(
         self, user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
-        """Let the user select which GPIs and GPOs to add."""
+        """Let the user select which parameters to add."""
+        options = _build_param_options(self._discovered, self._node_labels)
+
         if user_input is not None:
-            selected_gpis = [int(n) for n in user_input.get("gpis", [])]
-            selected_gpos = [int(n) for n in user_input.get("gpos", [])]
-
-            gpis = [
+            selected = user_input.get("params", [])
+            params = [
                 {
-                    CONF_IO_NUMBER: num,
-                    CONF_IO_NAME: self._discovered_gpis.get(num, f"GPI {num}"),
+                    CONF_PATH_KEY: pk,
+                    CONF_PARAM_LABEL: options.get(pk, pk),
                 }
-                for num in selected_gpis
+                for pk in selected
             ]
-            gpos = [
-                {
-                    CONF_IO_NUMBER: num,
-                    CONF_IO_NAME: self._discovered_gpos.get(num, f"GPO {num}"),
-                }
-                for num in selected_gpos
-            ]
-
             return self.async_create_entry(
                 title=f"Ember+ ({self._host})",
                 data={
                     CONF_HOST: self._host,
                     CONF_PORT: self._port,
-                    CONF_GPIS: gpis,
-                    CONF_GPOS: gpos,
+                    CONF_PARAMS: params,
                 },
             )
 
         schema_fields: dict[Any, Any] = {}
-
-        if self._discovered_gpis:
-            gpi_options = {
-                str(num): label
-                for num, label in sorted(self._discovered_gpis.items())
-            }
+        if options:
             schema_fields[
-                vol.Optional("gpis", default=list(gpi_options.keys()))
-            ] = cv.multi_select(gpi_options)
-
-        if self._discovered_gpos:
-            gpo_options = {
-                str(num): label
-                for num, label in sorted(self._discovered_gpos.items())
-            }
-            schema_fields[
-                vol.Optional("gpos", default=list(gpo_options.keys()))
-            ] = cv.multi_select(gpo_options)
+                vol.Optional("params", default=list(options.keys()))
+            ] = cv.multi_select(options)
 
         return self.async_show_form(
-            step_id="select_ios",
+            step_id="select_params",
             data_schema=vol.Schema(schema_fields),
             description_placeholders={
-                "gpi_count": str(len(self._discovered_gpis)),
-                "gpo_count": str(len(self._discovered_gpos)),
+                "param_count": str(len(options)),
             },
         )
 
@@ -167,99 +166,67 @@ class EmberPlusOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialise the options flow."""
         self._config_entry = config_entry
-        self._available_gpis: dict[int, str] = {}
-        self._available_gpos: dict[int, str] = {}
+        self._available: dict[str, EmberParam] = {}
+        self._node_labels: dict[str, str] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None,
     ) -> FlowResult:
-        """Scan the mixer and show all GPIs/GPOs for selection."""
+        """Scan the device and show all parameters for selection."""
         errors: dict[str, str] = {}
 
+        # Scan the device tree
+        if not self._available:
+            host = self._config_entry.data[CONF_HOST]
+            port = self._config_entry.data[CONF_PORT]
+
+            client = EmberClient(host, port)
+            try:
+                await client.connect()
+                await client.discover()
+                self._available = client.parameters
+                self._node_labels = client.node_labels
+                await client.disconnect()
+            except (EmberConnectionError, OSError, TimeoutError):
+                errors["base"] = "cannot_connect"
+                return self.async_show_form(
+                    step_id="init",
+                    data_schema=vol.Schema({}),
+                    errors=errors,
+                )
+
+        options = _build_param_options(self._available, self._node_labels)
+
         if user_input is not None:
-            selected_gpis = [int(n) for n in user_input.get("gpis", [])]
-            selected_gpos = [int(n) for n in user_input.get("gpos", [])]
-
-            gpis = [
+            selected = user_input.get("params", [])
+            params = [
                 {
-                    CONF_IO_NUMBER: num,
-                    CONF_IO_NAME: self._available_gpis.get(num, f"GPI {num}"),
+                    CONF_PATH_KEY: pk,
+                    CONF_PARAM_LABEL: options.get(pk, pk),
                 }
-                for num in selected_gpis
+                for pk in selected
             ]
-            gpos = [
-                {
-                    CONF_IO_NUMBER: num,
-                    CONF_IO_NAME: self._available_gpos.get(num, f"GPO {num}"),
-                }
-                for num in selected_gpos
-            ]
-
             return self.async_create_entry(
                 title="",
-                data={CONF_GPIS: gpis, CONF_GPOS: gpos},
+                data={CONF_PARAMS: params},
             )
 
-        # Scan the mixer tree
-        host = self._config_entry.data[CONF_HOST]
-        port = self._config_entry.data[CONF_PORT]
-
-        client = EmberClient(host, port)
-        try:
-            await client.connect()
-            await client.discover()
-            self._available_gpis = client.gpi_labels
-            self._available_gpos = client.gpo_labels
-            await client.disconnect()
-        except (EmberConnectionError, OSError, TimeoutError):
-            errors["base"] = "cannot_connect"
-            return self.async_show_form(
-                step_id="init",
-                data_schema=vol.Schema({}),
-                errors=errors,
-            )
-
-        # Currently configured numbers
-        gpis_conf: list[dict[str, Any]] = self._config_entry.options.get(
-            CONF_GPIS, self._config_entry.data.get(CONF_GPIS, []),
+        # Currently configured path_keys
+        current_conf: list[dict[str, Any]] = self._config_entry.options.get(
+            CONF_PARAMS, self._config_entry.data.get(CONF_PARAMS, []),
         )
-        gpos_conf: list[dict[str, Any]] = self._config_entry.options.get(
-            CONF_GPOS, self._config_entry.data.get(CONF_GPOS, []),
-        )
-        current_gpi_nums = {int(g[CONF_IO_NUMBER]) for g in gpis_conf}
-        current_gpo_nums = {int(g[CONF_IO_NUMBER]) for g in gpos_conf}
+        current_keys = [p[CONF_PATH_KEY] for p in current_conf]
 
         schema_fields: dict[Any, Any] = {}
-
-        if self._available_gpis:
-            gpi_options = {
-                str(num): label
-                for num, label in sorted(self._available_gpis.items())
-            }
+        if options:
             schema_fields[
-                vol.Optional(
-                    "gpis",
-                    default=[str(n) for n in sorted(current_gpi_nums)],
-                )
-            ] = cv.multi_select(gpi_options)
-
-        if self._available_gpos:
-            gpo_options = {
-                str(num): label
-                for num, label in sorted(self._available_gpos.items())
-            }
-            schema_fields[
-                vol.Optional(
-                    "gpos",
-                    default=[str(n) for n in sorted(current_gpo_nums)],
-                )
-            ] = cv.multi_select(gpo_options)
+                vol.Optional("params", default=current_keys)
+            ] = cv.multi_select(options)
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(schema_fields),
             description_placeholders={
-                "gpi_count": str(len(self._available_gpis)),
-                "gpo_count": str(len(self._available_gpos)),
+                "param_count": str(len(options)),
             },
         )

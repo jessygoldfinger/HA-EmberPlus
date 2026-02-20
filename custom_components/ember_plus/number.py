@@ -1,11 +1,11 @@
-"""Switch platform for the HA Ember+ integration."""
+"""Number platform for the HA Ember+ integration."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -22,7 +22,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Ember+ boolean switches from a config entry."""
+    """Set up Ember+ integer numbers from a config entry."""
     coordinator: EmberPlusCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     params_conf: list[dict[str, Any]] = entry.options.get(
@@ -33,9 +33,9 @@ async def async_setup_entry(
     for p in params_conf:
         path_key = p[CONF_PATH_KEY]
         param = coordinator.client.parameters.get(path_key)
-        if param is not None and param.value_type == "bool":
+        if param is not None and param.value_type == "int":
             entities.append(
-                EmberSwitch(
+                EmberNumber(
                     coordinator=coordinator,
                     path_key=path_key,
                     label=p.get(CONF_PARAM_LABEL, param.label),
@@ -46,8 +46,12 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class EmberSwitch(EmberPlusEntity, SwitchEntity):
-    """Represents a boolean Ember+ parameter as a switch."""
+class EmberNumber(EmberPlusEntity, NumberEntity):
+    """Represents an integer Ember+ parameter as a number."""
+
+    _attr_native_min_value = -32768
+    _attr_native_max_value = 32767
+    _attr_native_step = 1
 
     def __init__(
         self,
@@ -56,27 +60,22 @@ class EmberSwitch(EmberPlusEntity, SwitchEntity):
         label: str,
         path: list[int],
     ) -> None:
-        """Initialise the switch."""
+        """Initialise the number."""
         super().__init__(coordinator, path_key, label)
         self._path = path
 
     @property
-    def is_on(self) -> bool | None:
-        """Return True if the parameter is active."""
+    def native_value(self) -> float | None:
+        """Return the current value."""
         if self.coordinator.data is None:
             return None
-        return self.coordinator.data.get(self._path_key)
+        val = self.coordinator.data.get(self._path_key)
+        return float(val) if val is not None else None
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on."""
-        await self.coordinator.client.set_value(self._path, True)
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the value."""
+        int_val = int(value)
+        await self.coordinator.client.set_value(self._path, int_val)
         if self.coordinator.data is not None:
-            self.coordinator.data[self._path_key] = True
-        self.async_write_ha_state()
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off."""
-        await self.coordinator.client.set_value(self._path, False)
-        if self.coordinator.data is not None:
-            self.coordinator.data[self._path_key] = False
+            self.coordinator.data[self._path_key] = int_val
         self.async_write_ha_state()

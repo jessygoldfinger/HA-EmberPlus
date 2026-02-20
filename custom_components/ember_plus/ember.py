@@ -801,11 +801,44 @@ READ_TIMEOUT = 10
 DEFAULT_EMBER_PORT = 9000
 
 
-class EmberClient:
-    """Async TCP client for DHD Ember+ protocol.
+class EmberParam:
+    """A discovered Ember+ parameter."""
 
-    Connects to a DHD mixer on TCP port 9000, discovers the Ember+ tree,
-    and provides high-level methods for reading/writing GPI and GPO states.
+    def __init__(
+        self,
+        path: list[int],
+        identifier: str = "",
+        description: str = "",
+        value: Any = None,
+    ) -> None:
+        self.path = list(path)
+        self.path_key = ".".join(str(p) for p in path)
+        self.identifier = identifier
+        self.description = description
+        self.value = value
+
+    @property
+    def label(self) -> str:
+        """Human-readable label for this parameter."""
+        return self.description or self.identifier or self.path_key
+
+    @property
+    def value_type(self) -> str:
+        """Return 'bool', 'int', 'str', or 'unknown'."""
+        if isinstance(self.value, bool):
+            return "bool"
+        if isinstance(self.value, int):
+            return "int"
+        if isinstance(self.value, str):
+            return "str"
+        return "unknown"
+
+
+class EmberClient:
+    """Async TCP client for the Ember+ protocol.
+
+    Connects to an Ember+ device, discovers the full tree,
+    and provides generic parameter read/write.
     """
 
     def __init__(self, host: str, port: int = DEFAULT_EMBER_PORT) -> None:
@@ -817,14 +850,14 @@ class EmberClient:
         self._listener_task: asyncio.Task[None] | None = None
         self._response_queue: asyncio.Queue[bytes] = asyncio.Queue()
 
-        # Current states
-        self._gpi_states: dict[int, bool] = {}
-        self._gpo_states: dict[int, bool] = {}
-        self._gpi_labels: dict[int, str] = {}
-        self._gpo_labels: dict[int, str] = {}
+        # All discovered parameters keyed by path_key ("0.1.3")
+        self._params: dict[str, EmberParam] = {}
 
-        # Push callback: callback(io_type: str, number: int, state: bool)
-        self._state_callback: Callable[[str, int, bool], None] | None = None
+        # Node labels keyed by path_key for tree context
+        self._node_labels: dict[str, str] = {}
+
+        # Push callback: callback(path_key: str, value: Any)
+        self._state_callback: Callable[[str, Any], None] | None = None
 
     # ------------------------------------------------------------------
     # Properties
@@ -846,33 +879,22 @@ class EmberClient:
         return self._writer is not None and not self._writer.is_closing()
 
     @property
-    def gpi_states(self) -> dict[int, bool]:
-        """Return a copy of all GPI states."""
-        return dict(self._gpi_states)
+    def parameters(self) -> dict[str, EmberParam]:
+        """Return all discovered parameters."""
+        return dict(self._params)
 
     @property
-    def gpo_states(self) -> dict[int, bool]:
-        """Return a copy of all GPO states."""
-        return dict(self._gpo_states)
-
-    @property
-    def gpi_labels(self) -> dict[int, str]:
-        """Return a copy of all GPI labels."""
-        return dict(self._gpi_labels)
-
-    @property
-    def gpo_labels(self) -> dict[int, str]:
-        """Return a copy of all GPO labels."""
-        return dict(self._gpo_labels)
+    def node_labels(self) -> dict[str, str]:
+        """Return node labels for tree context."""
+        return dict(self._node_labels)
 
     def set_state_callback(
-        self, callback: Callable[[str, int, bool], None]
+        self, callback: Callable[[str, Any], None]
     ) -> None:
-        """Register a callback for state changes.
+        """Register a callback for parameter value changes.
 
         Args:
-            callback: Called with (io_type, number, state) where
-                      io_type is "gpi" or "gpo".
+            callback: Called with (path_key, new_value).
         """
         self._state_callback = callback
 
@@ -1036,78 +1058,61 @@ class EmberClient:
     def _process_nodes(self, nodes: list[EmberNode]) -> None:
         """Process parsed Ember+ nodes and update internal state."""
         for node in nodes:
-            if node.is_parameter and node.path:
-                self._process_parameter(node)
+            if node.path:
+                path_key = ".".join(str(p) for p in node.path)
+                clean_ident = node.identifier.strip() if node.identifier else ""
+                clean_desc = node.description.strip() if node.description else ""
+
+                if node.is_parameter:
+                    self._process_parameter(node)
+                else:
+                    # Store node label for tree context
+                    label = clean_desc or clean_ident
+                    if label:
+                        self._node_labels[path_key] = label
+
             if node.children:
                 self._process_nodes(list(node.children.values()))
 
     def _process_parameter(self, param: EmberNode) -> None:
         """Process a single parameter update."""
-        path = param.path
-        io_type: str | None = None
-        number: int | None = None
+        if not param.path:
+            return
 
-        # DHD tree: Device(0) > GPI(1) > GPI x(n)
-        # DHD tree: Device(0) > GPO(2) > GPO x(n)
-        if len(path) >= 3:
-            if path[1] == 1:
-                io_type = "gpi"
-                number = path[2]
-            elif path[1] == 2:
-                io_type = "gpo"
-                number = path[2]
-
-        # Fallback: detect from identifier
-        if io_type is None or number is None:
-            ident = param.identifier.strip().lower()
-            if ident.startswith("gpi"):
-                io_type = "gpi"
-                try:
-                    number = int(ident.replace("gpi", "").strip())
-                except ValueError:
-                    return
-            elif ident.startswith("gpo"):
-                io_type = "gpo"
-                try:
-                    number = int(ident.replace("gpo", "").strip())
-                except ValueError:
-                    return
-            else:
-                return
-
-        # Strip leading/trailing whitespace from identifier and description
+        path_key = ".".join(str(p) for p in param.path)
         clean_ident = param.identifier.strip() if param.identifier else ""
         clean_desc = param.description.strip() if param.description else ""
 
-        if isinstance(param.value, bool):
-            old_state = None
-            if io_type == "gpi":
-                old_state = self._gpi_states.get(number)
-                self._gpi_states[number] = param.value
-                if clean_desc:
-                    self._gpi_labels[number] = clean_desc
-                elif clean_ident:
-                    self._gpi_labels.setdefault(number, clean_ident)
-                else:
-                    self._gpi_labels.setdefault(number, f"GPI {number}")
-            elif io_type == "gpo":
-                old_state = self._gpo_states.get(number)
-                self._gpo_states[number] = param.value
-                if clean_desc:
-                    self._gpo_labels[number] = clean_desc
-                elif clean_ident:
-                    self._gpo_labels.setdefault(number, clean_ident)
-                else:
-                    self._gpo_labels.setdefault(number, f"GPO {number}")
+        if path_key in self._params:
+            # Update existing parameter
+            ep = self._params[path_key]
+            old_value = ep.value
+            if param.value is not None:
+                ep.value = param.value
+            if clean_ident:
+                ep.identifier = clean_ident
+            if clean_desc:
+                ep.description = clean_desc
 
-            if old_state != param.value and self._state_callback is not None:
-                _LOGGER.debug(
-                    "Ember+ push: %s %d = %s", io_type, number, param.value,
-                )
+            if old_value != ep.value and self._state_callback is not None:
+                _LOGGER.debug("Ember+ push: %s = %s", path_key, ep.value)
                 try:
-                    self._state_callback(io_type, number, param.value)
+                    self._state_callback(path_key, ep.value)
                 except Exception:
                     _LOGGER.exception("Error in state callback")
+        else:
+            # New parameter
+            ep = EmberParam(
+                path=param.path,
+                identifier=clean_ident,
+                description=clean_desc,
+                value=param.value,
+            )
+            self._params[path_key] = ep
+            _LOGGER.debug(
+                "Discovered param: %s = %s (%s)",
+                path_key, ep.value, ep.label,
+            )
 
     # ------------------------------------------------------------------
     # High-level commands
@@ -1126,7 +1131,6 @@ class EmberClient:
         """Discover the Ember+ tree by recursive getDirectory walk."""
         _LOGGER.debug("Discovering Ember+ tree...")
 
-        # Walk the tree: getDirectory on root, then each discovered node
         visited: set[tuple[int, ...]] = set()
         queue: list[list[int] | None] = [None]  # None = root
 
@@ -1140,43 +1144,51 @@ class EmberClient:
             await self._send_ember(build_get_directory(path))
             await asyncio.sleep(0.5)
 
-            # Drain response queue and look for new nodes to walk
+            # Drain response queue and process all nodes
             while not self._response_queue.empty():
                 try:
                     ber_data = self._response_queue.get_nowait()
                     nodes = parse_glow_response(ber_data)
+                    self._process_nodes(nodes)
                     for node in nodes:
                         if node.path and not node.is_parameter:
-                            node_path = node.path
-                            if tuple(node_path) not in visited:
-                                queue.append(node_path)
+                            if tuple(node.path) not in visited:
+                                queue.append(node.path)
                 except Exception:
                     break
 
-            # Limit depth to avoid infinite loops
-            if len(visited) > 200:
+            if len(visited) > 500:
                 _LOGGER.warning("Ember+ tree walk: depth limit reached")
                 break
 
         # Wait for any remaining push updates
         await asyncio.sleep(2.0)
 
+        # Process any remaining queued responses
+        while not self._response_queue.empty():
+            try:
+                ber_data = self._response_queue.get_nowait()
+                nodes = parse_glow_response(ber_data)
+                self._process_nodes(nodes)
+            except Exception:
+                break
+
         _LOGGER.info(
-            "Ember+ discovery complete: %d GPIs, %d GPOs",
-            len(self._gpi_states), len(self._gpo_states),
+            "Ember+ discovery complete: %d parameters, %d nodes",
+            len(self._params), len(self._node_labels),
         )
 
     async def subscribe_all(self) -> None:
-        """Subscribe to all GPI and GPO changes for push updates."""
-        await self._send_ember(build_subscribe([0, 1]))
+        """Subscribe to the root node for all push updates."""
+        await self._send_ember(build_subscribe([0]))
         await asyncio.sleep(0.2)
-        await self._send_ember(build_subscribe([0, 2]))
-        await asyncio.sleep(0.2)
-        _LOGGER.debug("Subscribed to GPI and GPO changes")
+        _LOGGER.debug("Subscribed to root for push updates")
 
-    async def set_gpi_state(self, number: int, state: bool) -> None:
-        """Set a GPI to on or off."""
-        _LOGGER.debug("Setting GPI %d to %s", number, state)
-        glow = build_set_value([0, 1, number], state)
+    async def set_value(self, path: list[int], value: bool | int) -> None:
+        """Set a parameter value."""
+        path_key = ".".join(str(p) for p in path)
+        _LOGGER.debug("Setting %s to %s", path_key, value)
+        glow = build_set_value(path, value)
         await self._send_ember(glow)
-        self._gpi_states[number] = state
+        if path_key in self._params:
+            self._params[path_key].value = value
