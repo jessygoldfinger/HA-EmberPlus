@@ -10,9 +10,9 @@ import voluptuous as vol
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
-    ConfigFlowResult,
     OptionsFlow,
 )
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
 
@@ -48,7 +48,7 @@ class DHDEmberConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Handle connection setup."""
         errors: dict[str, str] = {}
 
@@ -96,7 +96,7 @@ class DHDEmberConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_select_ios(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Let the user select which GPIs and GPOs to add."""
         if user_input is not None:
             selected_gpis = user_input.get("gpis", [])
@@ -194,7 +194,7 @@ class DHDEmberOptionsFlow(OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         """Scan the mixer and show all GPIs/GPOs for selection."""
         errors: dict[str, str] = {}
 
