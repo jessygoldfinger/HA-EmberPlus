@@ -1,4 +1,4 @@
-"""Base entity for the HA DHD Ember+ integration."""
+"""Base entity for the HA Ember+ integration."""
 
 from __future__ import annotations
 
@@ -6,17 +6,17 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import DHDEmberCoordinator
+from .coordinator import EmberPlusCoordinator
 
 
-class DHDEmberEntity(CoordinatorEntity[DHDEmberCoordinator]):
-    """Base class for DHD Ember+ entities."""
+class EmberPlusEntity(CoordinatorEntity[EmberPlusCoordinator]):
+    """Base class for Ember+ entities."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator: DHDEmberCoordinator,
+        coordinator: EmberPlusCoordinator,
         io_type: str,
         io_number: int,
         io_name: str,
@@ -32,12 +32,12 @@ class DHDEmberEntity(CoordinatorEntity[DHDEmberCoordinator]):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device information for the DHD mixer."""
+        """Return device information for the Ember+ device."""
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.config_entry.entry_id)},
             name=self.coordinator.config_entry.title,
             manufacturer="Jessy Goldfinger",
-            model="HA DHD Ember+ integration",
+            model="HA Ember+ integration",
             configuration_url=(
                 f"http://{self.coordinator.client.host}"
             ),

@@ -1,4 +1,4 @@
-"""Switch platform for the HA DHD Ember+ integration."""
+"""Switch platform for the HA Ember+ integration."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_GPIS, CONF_IO_NAME, CONF_IO_NUMBER, DOMAIN
-from .coordinator import DHDEmberCoordinator
-from .entity import DHDEmberEntity
+from .coordinator import EmberPlusCoordinator
+from .entity import EmberPlusEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,15 +22,15 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up DHD Ember+ GPI switches from a config entry."""
-    coordinator: DHDEmberCoordinator = hass.data[DOMAIN][entry.entry_id]
+    """Set up Ember+ GPI switches from a config entry."""
+    coordinator: EmberPlusCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     gpis: list[dict[str, Any]] = entry.options.get(
         CONF_GPIS, entry.data.get(CONF_GPIS, [])
     )
 
     entities = [
-        DHDGPISwitch(
+        EmberGPISwitch(
             coordinator=coordinator,
             io_number=int(gpi[CONF_IO_NUMBER]),
             io_name=gpi[CONF_IO_NAME],
@@ -41,12 +41,12 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DHDGPISwitch(DHDEmberEntity, SwitchEntity):
-    """Represents a read/write DHD GPI as a switch."""
+class EmberGPISwitch(EmberPlusEntity, SwitchEntity):
+    """Represents a read/write GPI as a switch."""
 
     def __init__(
         self,
-        coordinator: DHDEmberCoordinator,
+        coordinator: EmberPlusCoordinator,
         io_number: int,
         io_name: str,
     ) -> None:

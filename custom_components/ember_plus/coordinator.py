@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for the HA DHD Ember+ integration."""
+"""DataUpdateCoordinator for the HA Ember+ integration."""
 
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ from .ember import EmberClient, EmberConnectionError
 _LOGGER = logging.getLogger(__name__)
 
 
-class DHDEmberCoordinator(DataUpdateCoordinator[dict[str, dict[int, bool]]]):
-    """Coordinator that receives push updates from a DHD mixer via Ember+.
+class EmberPlusCoordinator(DataUpdateCoordinator[dict[str, dict[int, bool]]]):
+    """Coordinator that receives push updates via Ember+.
 
     Data structure: {"gpi": {1: True, 2: False, ...}, "gpo": {1: False, ...}}
-    No periodic polling — the mixer pushes all changes instantly.
+    No periodic polling — the device pushes all changes instantly.
     """
 
     config_entry: ConfigEntry
@@ -94,7 +94,7 @@ class DHDEmberCoordinator(DataUpdateCoordinator[dict[str, dict[int, bool]]]):
         except EmberConnectionError as err:
             await self.client.disconnect()
             raise UpdateFailed(
-                f"Lost connection to DHD mixer: {err}"
+                f"Lost connection to Ember+ device: {err}"
             ) from err
 
         return states

@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "HA DHD Ember+ instellen",
-        "description": "Verbind met je DHD-mixer via Ember+ (TCP-poort 9000). GPI's en GPO's worden automatisch ontdekt.",
+        "title": "HA Ember+ instellen",
+        "description": "Verbind met je Ember+ apparaat (TCP-poort 9000). GPI's en GPO's worden automatisch ontdekt.",
         "data": {
           "host": "Host",
           "port": "Poort"
@@ -19,19 +19,19 @@
       }
     },
     "error": {
-      "cannot_connect": "Kan niet verbinden met de DHD-mixer. Controleer IP-adres en poort.",
+      "cannot_connect": "Kan niet verbinden met het Ember+ apparaat. Controleer IP-adres en poort.",
       "already_configured": "Deze GPI/GPO is al geconfigureerd.",
       "invalid_number": "Nummer moet tussen 1 en 50 liggen."
     },
     "abort": {
-      "already_configured": "Deze DHD-mixer is al geconfigureerd."
+      "already_configured": "Dit Ember+ apparaat is al geconfigureerd."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "GPI's en GPO's beheren",
-        "description": "Mixer scannen... {gpi_count} GPI('s) en {gpo_count} GPO('s) gevonden. Selecteer welke je wilt gebruiken.",
+        "description": "Apparaat scannen... {gpi_count} GPI('s) en {gpo_count} GPO('s) gevonden. Selecteer welke je wilt gebruiken.",
         "data": {
           "gpis": "GPI's (schakelaars, lezen/schrijven)",
           "gpos": "GPO's (sensoren, alleen lezen)"
@@ -39,7 +39,7 @@
       }
     },
     "error": {
-      "cannot_connect": "Kan niet verbinden met de DHD-mixer om de tree te scannen."
+      "cannot_connect": "Kan niet verbinden met het Ember+ apparaat om de tree te scannen."
     }
   }
 }

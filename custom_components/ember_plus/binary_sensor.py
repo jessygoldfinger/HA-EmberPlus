@@ -1,4 +1,4 @@
-"""Binary sensor platform for the HA DHD Ember+ integration."""
+"""Binary sensor platform for the HA Ember+ integration."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_GPOS, CONF_IO_NAME, CONF_IO_NUMBER, DOMAIN
-from .coordinator import DHDEmberCoordinator
-from .entity import DHDEmberEntity
+from .coordinator import EmberPlusCoordinator
+from .entity import EmberPlusEntity
 
 
 async def async_setup_entry(
@@ -19,15 +19,15 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up DHD Ember+ GPO binary sensors from a config entry."""
-    coordinator: DHDEmberCoordinator = hass.data[DOMAIN][entry.entry_id]
+    """Set up Ember+ GPO binary sensors from a config entry."""
+    coordinator: EmberPlusCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     gpos: list[dict[str, Any]] = entry.options.get(
         CONF_GPOS, entry.data.get(CONF_GPOS, [])
     )
 
     entities = [
-        DHDGPOBinarySensor(
+        EmberGPOBinarySensor(
             coordinator=coordinator,
             io_number=int(gpo[CONF_IO_NUMBER]),
             io_name=gpo[CONF_IO_NAME],
@@ -38,12 +38,12 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DHDGPOBinarySensor(DHDEmberEntity, BinarySensorEntity):
-    """Represents a read-only DHD GPO as a binary sensor."""
+class EmberGPOBinarySensor(EmberPlusEntity, BinarySensorEntity):
+    """Represents a read-only GPO as a binary sensor."""
 
     def __init__(
         self,
-        coordinator: DHDEmberCoordinator,
+        coordinator: EmberPlusCoordinator,
         io_number: int,
         io_name: str,
     ) -> None:

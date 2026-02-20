@@ -1,6 +1,6 @@
-"""Constants for the HA DHD Ember+ integration."""
+"""Constants for the HA Ember+ integration."""
 
-DOMAIN = "dhd_ember"
+DOMAIN = "ember_plus"
 
 DEFAULT_PORT = 9000
 

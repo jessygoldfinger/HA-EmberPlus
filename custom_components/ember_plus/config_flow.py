@@ -1,4 +1,4 @@
-"""Config flow for the HA DHD Ember+ integration."""
+"""Config flow for the HA Ember+ integration."""
 
 from __future__ import annotations
 
@@ -26,8 +26,8 @@ from .ember import EmberClient, EmberConnectionError
 _LOGGER = logging.getLogger(__name__)
 
 
-class DHDEmberConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for HA DHD Ember+.
+class EmberPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for HA Ember+.
 
     Step 1: IP + port
     Step 2: Auto-discover GPIs/GPOs, let user select which to add
@@ -70,7 +70,7 @@ class DHDEmberConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_step_select_ios()
 
                 return self.async_create_entry(
-                    title=f"HA DHD Ember+ ({self._host})",
+                    title=f"Ember+ ({self._host})",
                     data={
                         CONF_HOST: self._host,
                         CONF_PORT: self._port,
@@ -114,7 +114,7 @@ class DHDEmberConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ]
 
             return self.async_create_entry(
-                title=f"HA DHD Ember+ ({self._host})",
+                title=f"Ember+ ({self._host})",
                 data={
                     CONF_HOST: self._host,
                     CONF_PORT: self._port,
@@ -156,13 +156,13 @@ class DHDEmberConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
-    ) -> DHDEmberOptionsFlow:
+    ) -> EmberPlusOptionsFlow:
         """Return the options flow handler."""
-        return DHDEmberOptionsFlow(config_entry)
+        return EmberPlusOptionsFlow(config_entry)
 
 
-class DHDEmberOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for HA DHD Ember+."""
+class EmberPlusOptionsFlow(config_entries.OptionsFlow):
+    """Handle options for HA Ember+."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialise the options flow."""
